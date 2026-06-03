@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% macro sort_url(column) -%}
+{{ url_for(
+    'main.dataset',
+    search=filters.search,
+    start_date=filters.start_date,
+    end_date=filters.end_date,
+    per_page=filters.per_page,
+    page=1,
+    sort=column,
+    direction=filters.next_direction if filters.sort == column else 'asc'
+) }}
+{%- endmacro %}
+
+{% block content %}
+<section class="dataset-header">
+    <div>
+        <h1>Manajemen Dataset</h1>
+    </div>
+    <form class="upload-card" method="post" action="{{ url_for('main.dataset_upload') }}" enctype="multipart/form-data">
+        <label for="datasetFile">
+            <i class="bi bi-cloud-arrow-up-fill"></i>
+            <span>Upload Dataset</span>
+        </label>
+        <input id="datasetFile" type="file" name="dataset_file" accept=".xlsx" required>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-upload"></i>
+        </button>
+    </form>
+</section>
+
+<section class="analytics-card dataset-card">
+    <form class="dataset-toolbar" method="get" action="{{ url_for('main.dataset') }}">
+        <div class="dataset-search">
+            <i class="bi bi-search"></i>
+            <input type="search" name="search" value="{{ filters.search }}" placeholder="Cari pesanan, username, SKU, kota...">
+        </div>
+
+        <label>
+            <span>Dari</span>
+            <input type="date" name="start_date" value="{{ filters.start_date }}">
+        </label>
+
+        <label>
+            <span>Sampai</span>
+            <input type="date" name="end_date" value="{{ filters.end_date }}">
+        </label>
+
+        <label>
+            <span>Tampil</span>
+            <select name="per_page" onchange="this.form.submit()">
+                {% for size in filters.allowed_sizes %}
+                <option value="{{ size }}" {% if filters.per_page == size %}selected{% endif %}>{{ size }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <input type="hidden" name="sort" value="{{ filters.sort }}">
+        <input type="hidden" name="direction" value="{{ filters.direction }}">
+
+        <button class="filter-button" type="submit">
+            <i class="bi bi-funnel-fill"></i>
+            <span>Filter</span>
+        </button>
+        <a class="reset-button" href="{{ url_for('main.dataset') }}">
+            <i class="bi bi-arrow-counterclockwise"></i>
+        </a>
+    </form>
+
+    <div class="dataset-action-row">
+        <div class="dataset-action-group">
+            <form class="bulk-selected-form is-hidden" id="datasetBulkDeleteForm" method="post" action="{{ url_for('main.dataset_bulk_delete', search=filters.search, start_date=filters.start_date, end_date=filters.end_date, per_page=filters.per_page, page=filters.page, sort=filters.sort, direction=filters.direction) }}" data-confirm-title="Hapus data yang dipilih?" data-confirm-message="Data dataset yang dicentang akan dihapus dari database lokal.">
+                <input type="hidden" name="delete_mode" value="selected">
+                <input type="hidden" name="selected_ids" id="datasetSelectedIds">
+                <button class="bulk-action-button danger" type="submit" disabled>
+                    <i class="bi bi-trash3-fill"></i>
+                    <span>Hapus Dipilih</span>
+                </button>
+            </form>
+            <form class="bulk-all-form {% if filters.total_rows == 0 %}is-hidden{% endif %}" method="post" action="{{ url_for('main.dataset_bulk_delete') }}" data-confirm-title="Hapus semua dataset?" data-confirm-message="Semua data pesanan, segmentasi, dan hasil pra-pemrosesan akan dikosongkan dari database lokal.">
+                <input type="hidden" name="delete_mode" value="all">
+                <button class="bulk-action-button danger" type="submit" {% if filters.total_rows == 0 %}disabled{% endif %}>
+                    <i class="bi bi-database-x"></i>
+                    <span>Hapus Semua</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="dataset-meta">
+        <span>{{ filters.total_rows }} data ditemukan</span>
+        <span>Halaman {{ filters.page }} dari {{ filters.total_pages }}</span>
+    </div>
+
+    <div class="dataset-table-wrap">
+        <table class="table dataset-table align-middle">
+            <thead>
+                <tr>
+                    <th>
+                        <input class="dataset-check" type="checkbox" id="datasetSelectAll" aria-label="Pilih semua data halaman ini" {% if not rows %}disabled{% endif %}>
+                    </th>
+                    <th><a href="{{ sort_url('order_created_at') }}">Tanggal <i class="bi bi-arrow-down-up"></i></a></th>
+                    <th><a href="{{ sort_url('buyer_username') }}">Username <i class="bi bi-arrow-down-up"></i></a></th>
+                    <th><a href="{{ sort_url('order_status') }}">Status <i class="bi bi-arrow-down-up"></i></a></th>
+                    <th>No. Pesanan</th>
+                    <th><a href="{{ sort_url('sku_reference') }}">SKU/Produk <i class="bi bi-arrow-down-up"></i></a></th>
+                    <th><a href="{{ sort_url('quantity') }}">Qty <i class="bi bi-arrow-down-up"></i></a></th>
+                    <th><a href="{{ sort_url('total_payment_rupiah') }}">Total <i class="bi bi-arrow-down-up"></i></a></th>
+                    <th><a href="{{ sort_url('payment_method') }}">Pembayaran <i class="bi bi-arrow-down-up"></i></a></th>
+                    <th><a href="{{ sort_url('city') }}">Kota <i class="bi bi-arrow-down-up"></i></a></th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td>
+                        <input class="dataset-check dataset-row-check" type="checkbox" value="{{ row.id }}" aria-label="Pilih data {{ row.order_number }}">
+                    </td>
+                    <td>{{ row.purchase_date.strftime('%d/%m/%y %H:%M') if row.purchase_date else '-' }}</td>
+                    <td class="text-truncate-cell">{{ row.name or '-' }}</td>
+                    <td><span class="status-pill status-{{ row.order_status|lower }}">{{ row.order_status }}</span></td>
+                    <td class="text-truncate-cell">{{ row.order_number }}</td>
+                    <td class="text-truncate-cell wide">{{ row.product_category or '-' }}</td>
+                    <td>{{ row.quantity }}</td>
+                    <td>Rp {{ "{:,.0f}".format(row.total_amount).replace(",", ".") }}</td>
+                    <td class="text-truncate-cell">{{ row.purchase_channel or '-' }}</td>
+                    <td class="text-truncate-cell">{{ row.city or '-' }}</td>
+                    <td>
+                        <div class="row-actions">
+                            <button class="icon-action" type="button" data-bs-toggle="modal" data-bs-target="#editModal{{ row.id }}" aria-label="Edit">
+                                <i class="bi bi-pencil-square"></i>
+                            </button>
+                            <form method="post" action="{{ url_for('main.dataset_delete', row_id=row.id, search=filters.search, start_date=filters.start_date, end_date=filters.end_date, per_page=filters.per_page, page=filters.page, sort=filters.sort, direction=filters.direction) }}" data-confirm-title="Hapus data dataset?" data-confirm-message="Data pesanan ini akan dihapus dari database lokal.">
+                                <button class="icon-action danger" type="submit" aria-label="Hapus">
+                                    <i class="bi bi-trash3-fill"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="11" class="text-center text-muted py-4">Belum ada data. Upload file Excel terlebih dahulu.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="dataset-pagination">
+        <a class="page-button {% if filters.page <= 1 %}disabled{% endif %}" href="{{ url_for('main.dataset', search=filters.search, start_date=filters.start_date, end_date=filters.end_date, per_page=filters.per_page, page=filters.page - 1, sort=filters.sort, direction=filters.direction) }}">
+            <i class="bi bi-chevron-left"></i>
+            <span>Prev</span>
+        </a>
+        <span>{{ filters.page }} / {{ filters.total_pages }}</span>
+        <a class="page-button {% if filters.page >= filters.total_pages %}disabled{% endif %}" href="{{ url_for('main.dataset', search=filters.search, start_date=filters.start_date, end_date=filters.end_date, per_page=filters.per_page, page=filters.page + 1, sort=filters.sort, direction=filters.direction) }}">
+            <span>Next</span>
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+</section>
+
+{% for row in rows %}
+<div class="modal fade" id="editModal{{ row.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <form class="modal-content dataset-modal" method="post" action="{{ url_for('main.dataset_edit', row_id=row.id, search=filters.search, start_date=filters.start_date, end_date=filters.end_date, per_page=filters.per_page, page=filters.page, sort=filters.sort, direction=filters.direction) }}">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5">Edit Data Pesanan</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Username</label>
+                        <input class="form-control" name="buyer_username" value="{{ row.name or '' }}">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" name="order_status">
+                            <option value="Selesai" {% if row.order_status == 'Selesai' %}selected{% endif %}>Selesai</option>
+                            <option value="Batal" {% if row.order_status == 'Batal' %}selected{% endif %}>Batal</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">SKU</label>
+                        <input class="form-control" name="sku_reference" value="{{ row.sku_reference or '' }}">
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Qty</label>
+                        <input class="form-control" type="number" name="quantity" value="{{ row.quantity }}" min="0">
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Total Rupiah</label>
+                        <input class="form-control" type="number" name="total_amount" value="{{ row.total_amount|int }}" min="0">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Pembayaran</label>
+                        <input class="form-control" name="payment_method" value="{{ row.purchase_channel or '' }}">
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Kota</label>
+                        <input class="form-control" name="city" value="{{ row.city or '' }}">
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Provinsi</label>
+                        <input class="form-control" name="province" value="{{ row.province or '' }}">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Tanggal</label>
+                        <input class="form-control" type="datetime-local" name="order_created_at" value="{{ row.purchase_date.strftime('%Y-%m-%dT%H:%M') if row.purchase_date else '' }}">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+                <button type="submit" class="btn btn-primary">Simpan</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

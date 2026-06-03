@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="training-hero report-cover">
+    <div class="report-cover-main">
+        <span class="report-kicker">Random Forest</span>
+        <h1>Training Model Segmentasi</h1>
+        <p>Melatih model klasifikasi dari data hasil pra-pemrosesan untuk memprediksi segmentasi perilaku konsumen.</p>
+        <div class="report-cover-meta">
+            <span><i class="bi bi-table"></i> {{ total_ready }} data siap training</span>
+            <span><i class="bi bi-bullseye"></i> {{ "%.2f"|format(latest.accuracy * 100) ~ "%" if latest else "Belum Training" }}</span>
+            <span><i class="bi bi-diagram-3-fill"></i> Random Forest</span>
+        </div>
+    </div>
+    <form method="post" action="{{ url_for('main.training_process') }}" class="report-cover-side training-cover-form">
+        <div class="training-cover-fields">
+            <label>
+                <small>Test Size</small>
+                <select name="test_size">
+                    <option value="0.2">20%</option>
+                    <option value="0.25">25%</option>
+                    <option value="0.3">30%</option>
+                </select>
+            </label>
+            <label>
+                <small>Tree</small>
+                <input type="number" name="n_estimators" value="150" min="50" step="10">
+            </label>
+            <label>
+                <small>Depth</small>
+                <input type="number" name="max_depth" placeholder="Auto" min="1">
+            </label>
+            <button class="process-button" type="submit">
+                <i class="bi bi-play-fill"></i>
+                <span>Training</span>
+            </button>
+        </div>
+    </form>
+</section>
+
+<section class="training-grid">
+    <article class="preprocess-stat">
+        <i class="bi bi-table"></i>
+        <span>Data Siap Training</span>
+        <strong>{{ total_ready }}</strong>
+    </article>
+    <article class="preprocess-stat">
+        <i class="bi bi-bullseye"></i>
+        <span>Akurasi</span>
+        <strong>{{ "%.2f"|format(latest.accuracy * 100) ~ "%" if latest else "-" }}</strong>
+    </article>
+    <article class="preprocess-stat">
+        <i class="bi bi-activity"></i>
+        <span>F1-score</span>
+        <strong>{{ "%.2f"|format(latest.f1_score * 100) ~ "%" if latest else "-" }}</strong>
+    </article>
+    <article class="preprocess-stat">
+        <i class="bi bi-diagram-3-fill"></i>
+        <span>Data Uji</span>
+        <strong>{{ latest.test_rows if latest else 0 }}</strong>
+    </article>
+</section>
+
+<section class="preprocess-layout">
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Fitur Model</p>
+                <h2>Atribut Training</h2>
+            </div>
+        </div>
+        <div class="feature-grid training-feature-grid">
+            {% for feature in numeric_features %}
+            <div>
+                <strong>{{ feature }}</strong>
+                <span>Numerik</span>
+            </div>
+            {% endfor %}
+            {% for feature in categorical_features %}
+            <div>
+                <strong>{{ feature }}</strong>
+                <span>Kategori</span>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Label</p>
+                <h2>Distribusi Segmentasi</h2>
+            </div>
+        </div>
+        <div class="segment-list">
+            {% for row in label_rows %}
+            <div>
+                <span>{{ row.segment_label }}</span>
+                <strong>{{ row.total }}</strong>
+            </div>
+            {% else %}
+            <div>
+                <span>Belum ada data</span>
+                <strong>0</strong>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+</section>
+
+{% if latest %}
+<section class="training-result-grid">
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Evaluasi</p>
+                <h2>Confusion Matrix</h2>
+            </div>
+            <span class="soft-pill"><i class="bi bi-clock-history"></i> {{ latest.trained_at }}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table matrix-table align-middle">
+                <thead>
+                    <tr>
+                        <th>Aktual \ Prediksi</th>
+                        {% for label in latest.labels %}
+                        <th>{{ label }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in latest.confusion_matrix %}
+                    <tr>
+                        <th>{{ latest.labels[loop.index0] }}</th>
+                        {% for value in row %}
+                        <td>{{ value }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Report</p>
+                <h2>Classification Report</h2>
+            </div>
+        </div>
+        <pre class="classification-report">{{ latest.classification_report_text }}</pre>
+    </article>
+</section>
+{% endif %}
+
+<section class="analytics-card training-history-card">
+    <div class="section-title">
+        <div>
+            <p>Riwayat</p>
+            <h2>Training Terakhir</h2>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table preprocess-table align-middle">
+            <thead>
+                <tr>
+                    <th>Waktu</th>
+                    <th>Data</th>
+                    <th>Train</th>
+                    <th>Test</th>
+                    <th>Akurasi</th>
+                    <th>Precision</th>
+                    <th>Recall</th>
+                    <th>F1-score</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in history %}
+                <tr>
+                    <td>{{ row.trained_at }}</td>
+                    <td>{{ row.total_rows }}</td>
+                    <td>{{ row.train_rows }}</td>
+                    <td>{{ row.test_rows }}</td>
+                    <td>{{ "%.2f"|format(row.accuracy * 100) }}%</td>
+                    <td>{{ "%.2f"|format(row.precision_score * 100) }}%</td>
+                    <td>{{ "%.2f"|format(row.recall_score * 100) }}%</td>
+                    <td>{{ "%.2f"|format(row.f1_score * 100) }}%</td>
+                    <td>
+                        <form method="post" action="{{ url_for('main.training_delete', training_id=row.id) }}" data-confirm-title="Hapus riwayat training?" data-confirm-message="Riwayat evaluasi training ini akan dihapus dari database.">
+                            <button class="icon-action danger" type="submit" aria-label="Hapus training">
+                                <i class="bi bi-trash3-fill"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" class="text-center text-muted py-4">Belum ada training model.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

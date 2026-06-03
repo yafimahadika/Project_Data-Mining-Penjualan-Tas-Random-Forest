@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="preprocess-hero report-cover">
+    <div class="report-cover-main">
+        <span class="report-kicker">Data Mining</span>
+        <h1>Pra-Pemrosesan Dataset</h1>
+        <p>Membersihkan data Shopee dan membentuk fitur perilaku konsumen sebelum masuk ke tahap training Random Forest.</p>
+        <div class="report-cover-meta">
+            <span><i class="bi bi-database-fill"></i> {{ summary.raw_rows }} data mentah</span>
+            <span><i class="bi bi-table"></i> {{ summary.ready_rows }} siap training</span>
+            <span><i class="bi bi-people-fill"></i> {{ summary.unique_buyers }} pembeli</span>
+        </div>
+    </div>
+    <form method="post" action="{{ url_for('main.preprocessing_process') }}" class="report-cover-side">
+        <div>
+            <small>Output</small>
+            <strong>Dataset Siap Training</strong>
+        </div>
+        <button class="process-button" type="submit">
+            <i class="bi bi-play-fill"></i>
+            <span>Proses Pra-Pemrosesan</span>
+        </button>
+    </form>
+</section>
+
+<section class="preprocess-grid">
+    <article class="preprocess-stat">
+        <i class="bi bi-database-fill"></i>
+        <span>Data Mentah</span>
+        <strong>{{ summary.raw_rows }}</strong>
+    </article>
+    <article class="preprocess-stat">
+        <i class="bi bi-check-circle-fill"></i>
+        <span>Pesanan Selesai</span>
+        <strong>{{ summary.finished_rows }}</strong>
+    </article>
+    <article class="preprocess-stat">
+        <i class="bi bi-x-circle-fill"></i>
+        <span>Pesanan Batal</span>
+        <strong>{{ summary.canceled_rows }}</strong>
+    </article>
+    <article class="preprocess-stat">
+        <i class="bi bi-person-lines-fill"></i>
+        <span>Pembeli Unik</span>
+        <strong>{{ summary.unique_buyers }}</strong>
+    </article>
+</section>
+
+<section class="preprocess-layout">
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Pembersihan Data</p>
+                <h2>Validasi Dataset</h2>
+            </div>
+        </div>
+        <div class="cleaning-list">
+            <div>
+                <i class="bi bi-files"></i>
+                <span>Duplikasi No. Pesanan</span>
+                <strong>{{ summary.duplicate_orders }}</strong>
+            </div>
+            <div>
+                <i class="bi bi-person-x-fill"></i>
+                <span>Username Kosong</span>
+                <strong>{{ summary.missing_username }}</strong>
+            </div>
+            <div>
+                <i class="bi bi-tags-fill"></i>
+                <span>SKU Kosong</span>
+                <strong>{{ summary.missing_sku }}</strong>
+            </div>
+            <div>
+                <i class="bi bi-table"></i>
+                <span>Data Siap Training</span>
+                <strong>{{ summary.ready_rows }}</strong>
+            </div>
+        </div>
+    </article>
+
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Target</p>
+                <h2>Distribusi Label Segmentasi</h2>
+            </div>
+        </div>
+        <div class="segment-list">
+            {% for row in segment_rows %}
+            <div>
+                <span>{{ row.segment_label }}</span>
+                <strong>{{ row.total }}</strong>
+            </div>
+            {% else %}
+            <div>
+                <span>Belum diproses</span>
+                <strong>0</strong>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+</section>
+
+<section class="analytics-card">
+    <div class="section-title">
+        <div>
+            <p>Seleksi Fitur</p>
+            <h2>Atribut untuk Random Forest</h2>
+        </div>
+    </div>
+    <div class="feature-grid">
+        {% for feature in feature_rows %}
+        <div>
+            <strong>{{ feature.name }}</strong>
+            <span>{{ feature.type }}</span>
+            <small>{{ feature.description }}</small>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="analytics-card preprocessed-preview-card">
+    <div class="section-title">
+        <div>
+            <p>Output</p>
+            <h2>Preview Dataset Siap Training</h2>
+        </div>
+        {% if summary.last_processed %}
+        <span class="soft-pill"><i class="bi bi-clock-history"></i> {{ summary.last_processed }}</span>
+        {% endif %}
+    </div>
+    <div class="table-responsive">
+        <table class="table preprocess-table align-middle">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Order</th>
+                    <th>Qty</th>
+                    <th>Total Belanja</th>
+                    <th>Rata-rata</th>
+                    <th>Pembayaran</th>
+                    <th>Provinsi</th>
+                    <th>SKU</th>
+                    <th>Segmentasi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in preview_rows %}
+                <tr>
+                    <td>{{ row.buyer_username }}</td>
+                    <td>{{ row.total_orders }}</td>
+                    <td>{{ row.total_quantity }}</td>
+                    <td>Rp {{ "{:,.0f}".format(row.total_spent_rupiah).replace(",", ".") }}</td>
+                    <td>Rp {{ "{:,.0f}".format(row.average_order_rupiah).replace(",", ".") }}</td>
+                    <td>{{ row.dominant_payment_method or '-' }}</td>
+                    <td>{{ row.dominant_province or '-' }}</td>
+                    <td>{{ row.dominant_sku or '-' }}</td>
+                    <td><span class="status-pill status-selesai">{{ row.segment_label }}</span></td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" class="text-center text-muted py-4">Belum ada hasil pra-pemrosesan. Upload dataset lalu klik proses.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

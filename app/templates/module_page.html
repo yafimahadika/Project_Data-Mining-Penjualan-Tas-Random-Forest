@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="module-hero">
+    <span class="module-icon"><i class="bi {{ icon }}"></i></span>
+    <div>
+        <p>{{ eyebrow }}</p>
+        <h1>{{ title }}</h1>
+        <span>{{ description }}</span>
+    </div>
+</section>
+
+{% if metric %}
+<section class="module-grid">
+    <article class="module-card">
+        <small>Akurasi</small>
+        <strong>{{ "%.2f"|format(metric.accuracy * 100) }}%</strong>
+    </article>
+    <article class="module-card">
+        <small>Precision</small>
+        <strong>{{ "%.2f"|format(metric.precision_score * 100) }}%</strong>
+    </article>
+    <article class="module-card">
+        <small>Recall</small>
+        <strong>{{ "%.2f"|format(metric.recall_score * 100) }}%</strong>
+    </article>
+    <article class="module-card">
+        <small>F1-score</small>
+        <strong>{{ "%.2f"|format(metric.f1_score * 100) }}%</strong>
+    </article>
+</section>
+{% endif %}
+
+{% if user_rows %}
+<section class="analytics-card">
+    <div class="section-title">
+        <div>
+            <p>Pengguna</p>
+            <h2>Daftar Akun</h2>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Nama</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Dibuat</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in user_rows %}
+                <tr>
+                    <td>{{ user.name }}</td>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.role|title }}</td>
+                    <td>{{ user.created_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% else %}
+<section class="analytics-card">
+    <div class="section-title">
+        <div>
+            <p>Status Modul</p>
+            <h2>Siap Dikembangkan</h2>
+        </div>
+    </div>
+    <p class="module-note">
+        Modul ini sudah ditempatkan sesuai alur skripsi. Tahap berikutnya adalah menghubungkan prosesnya dengan dataset Excel dan model Random Forest.
+    </p>
+</section>
+{% endif %}
+{% endblock %}

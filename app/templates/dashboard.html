@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="dashboard-hero">
+    <div>
+        <h1>Prediksi Segmentasi Penjualan Tas</h1>
+    </div>
+    <div class="hero-badge">
+        <i class="bi bi-tree-fill"></i>
+        <span>Random Forest</span>
+    </div>
+</section>
+
+{% if stats.database_error %}
+<div class="alert alert-warning dashboard-alert" role="alert">
+    Database belum siap atau MySQL XAMPP belum berjalan.
+</div>
+{% endif %}
+
+<section class="metric-grid">
+    <article class="metric-card metric-purple">
+        <span class="metric-icon"><i class="bi bi-people-fill"></i></span>
+        <div>
+            <p>Pembeli Selesai</p>
+            <strong>{{ stats.customers }}</strong>
+        </div>
+    </article>
+    <article class="metric-card metric-blue">
+        <span class="metric-icon"><i class="bi bi-receipt-cutoff"></i></span>
+        <div>
+            <p>Order Selesai</p>
+            <strong>{{ stats.transactions }}</strong>
+        </div>
+    </article>
+    <article class="metric-card metric-green">
+        <span class="metric-icon"><i class="bi bi-cash-stack"></i></span>
+        <div>
+            <p>Total Penjualan</p>
+            <strong class="compact-money">{{ stats.revenue_display }}</strong>
+        </div>
+    </article>
+    <article class="metric-card metric-lime">
+        <span class="metric-icon"><i class="bi bi-bullseye"></i></span>
+        <div>
+            <p>Akurasi Model</p>
+            <strong>{{ stats.accuracy }}</strong>
+        </div>
+    </article>
+</section>
+
+<section class="dashboard-grid">
+    <article class="analytics-card sales-chart-card">
+        <div class="section-title">
+            <div>
+                <p>Tren Penjualan</p>
+                <h2>Nilai Transaksi per Bulan</h2>
+            </div>
+            <span class="soft-pill"><i class="bi bi-calendar3"></i> Database</span>
+        </div>
+        <div class="chart-wrap chart-tall">
+            <canvas id="monthlySalesChart"></canvas>
+        </div>
+    </article>
+
+    <article class="analytics-card segment-card">
+        <div class="section-title">
+            <div>
+                <p>Segmentasi</p>
+                <h2>Perilaku Pembeli</h2>
+            </div>
+        </div>
+        <div class="chart-wrap donut-wrap">
+            <canvas id="segmentChart"></canvas>
+        </div>
+        <div class="segment-list">
+            {% for row in top_segments %}
+            <div>
+                <span>{{ row.label }}</span>
+                <strong>{{ row.total }}</strong>
+            </div>
+            {% else %}
+            <div>
+                <span>Belum ada prediksi</span>
+                <strong>0</strong>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Channel</p>
+                <h2>Pembelian Konsumen</h2>
+            </div>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="channelChart"></canvas>
+        </div>
+    </article>
+
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Produk</p>
+                <h2>Kategori Tas Terjual</h2>
+            </div>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="categoryChart"></canvas>
+        </div>
+    </article>
+</section>
+
+<section class="bottom-grid">
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Aktivitas</p>
+                <h2>Transaksi Terbaru</h2>
+            </div>
+        </div>
+        <div class="activity-list">
+            {% for row in recent_transactions %}
+            <div class="activity-item">
+                <span class="activity-icon"><i class="bi bi-bag-check-fill"></i></span>
+                <div>
+                    <strong>{{ row.name }}</strong>
+                    <small>{{ row.product_category|truncate(42) }} via {{ row.purchase_channel }}</small>
+                </div>
+                <span>Rp {{ "{:,.0f}".format(row.total_amount).replace(",", ".") }}</span>
+            </div>
+            {% else %}
+            <div class="empty-state">Belum ada transaksi.</div>
+            {% endfor %}
+        </div>
+    </article>
+
+    <article class="analytics-card model-summary">
+        <div class="section-title">
+            <div>
+                <p>Model</p>
+                <h2>Ringkasan Dataset</h2>
+            </div>
+        </div>
+        <div class="summary-stack">
+            <div>
+                <i class="bi bi-person-vcard-fill"></i>
+                <span>Rata-rata transaksi</span>
+                <strong>Rp {{ "{:,.0f}".format(stats.average_order).replace(",", ".") }}</strong>
+            </div>
+            <div>
+                <i class="bi bi-diagram-3-fill"></i>
+                <span>Hasil segmentasi</span>
+                <strong>{{ stats.segments }} data</strong>
+            </div>
+        </div>
+    </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.dashboardData = {{ chart_data | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

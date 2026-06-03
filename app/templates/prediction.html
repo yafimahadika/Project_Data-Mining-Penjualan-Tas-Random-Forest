@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="prediction-hero report-cover">
+    <div class="report-cover-main">
+        <span class="report-kicker">Prediksi</span>
+        <h1>Prediksi Segmentasi Konsumen</h1>
+        <p>Gunakan model Random Forest hasil training untuk memperkirakan segmen pembeli berdasarkan perilaku transaksi.</p>
+        <div class="report-cover-meta">
+            <span><i class="bi bi-cpu-fill"></i> Random Forest</span>
+            {% if latest_training %}
+            <span><i class="bi bi-bullseye"></i> Akurasi {{ "%.2f"|format(latest_training.accuracy * 100) }}%</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="report-cover-side prediction-status">
+        <div>
+            <i class="bi bi-cpu-fill"></i>
+            <small>Status Model</small>
+            <strong>{{ "Siap Digunakan" if model_available else "Belum Training" }}</strong>
+        </div>
+    </div>
+</section>
+
+<section class="prediction-grid">
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Input Manual</p>
+                <h2>Perilaku Konsumen</h2>
+            </div>
+            {% if latest_training %}
+            <span class="soft-pill"><i class="bi bi-bullseye"></i> Akurasi {{ "%.2f"|format(latest_training.accuracy * 100) }}%</span>
+            {% endif %}
+        </div>
+
+        <form method="post" action="{{ url_for('main.prediction_process') }}" class="prediction-form">
+            <label class="prediction-field prediction-field-wide">
+                <span>Username Pembeli</span>
+                <input type="text" name="buyer_username" placeholder="Opsional">
+            </label>
+            <label class="prediction-field">
+                <span>Total Order</span>
+                <input type="number" name="total_orders" value="1" min="0" required>
+            </label>
+            <label class="prediction-field">
+                <span>Total Qty</span>
+                <input type="number" name="total_quantity" value="1" min="0" required>
+            </label>
+            <label class="prediction-field">
+                <span>Total Belanja</span>
+                <input type="number" name="total_spent_rupiah" value="0" min="0" step="1000" required>
+            </label>
+            <label class="prediction-field">
+                <span>Rata-rata</span>
+                <input type="number" name="average_order_rupiah" min="0" step="1000" placeholder="Otomatis">
+            </label>
+            <label class="prediction-field">
+                <span>Order COD</span>
+                <input type="number" name="cod_orders" value="0" min="0" required>
+            </label>
+            <label class="prediction-field">
+                <span>Order Online</span>
+                <input type="number" name="online_orders" value="1" min="0" required>
+            </label>
+            <label class="prediction-field">
+                <span>Hari Sejak Order Pertama</span>
+                <input type="number" name="days_since_first_order" value="0" min="0" required>
+            </label>
+            <label class="prediction-field">
+                <span>Metode Pembayaran</span>
+                <select name="dominant_payment_method" required>
+                    {% for value in options.payment_methods %}
+                    <option value="{{ value }}">{{ value }}</option>
+                    {% else %}
+                    <option value="Tidak Diketahui">Tidak Diketahui</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="prediction-field">
+                <span>Provinsi</span>
+                <select name="dominant_province" required>
+                    {% for value in options.provinces %}
+                    <option value="{{ value }}">{{ value }}</option>
+                    {% else %}
+                    <option value="Tidak Diketahui">Tidak Diketahui</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="prediction-field">
+                <span>SKU Dominan</span>
+                <select name="dominant_sku" required>
+                    {% for value in options.skus %}
+                    <option value="{{ value }}">{{ value }}</option>
+                    {% else %}
+                    <option value="Tidak Diketahui">Tidak Diketahui</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button class="prediction-submit" type="submit" {% if not model_available %}disabled{% endif %}>
+                <i class="bi bi-magic"></i>
+                <span>Prediksi Segmentasi</span>
+            </button>
+        </form>
+    </article>
+
+    <article class="analytics-card prediction-result-card">
+        <div class="section-title">
+            <div>
+                <p>Hasil</p>
+                <h2>Output Prediksi</h2>
+            </div>
+        </div>
+        {% if selected_result %}
+        <div class="prediction-result">
+            <i class="bi bi-stars"></i>
+            <span>Segmentasi</span>
+            <strong>{{ selected_result.predicted_segment }}</strong>
+            <small>Confidence {{ "%.2f"|format((selected_result.confidence or 0) * 100) }}%</small>
+        </div>
+        <div class="probability-list">
+            {% for item in selected_result.probabilities %}
+            <div>
+                <span>{{ item.label }}</span>
+                <strong>{{ "%.2f"|format(item.value * 100) }}%</strong>
+                <em style="--bar-width: {{ item.value * 100 }}%"></em>
+            </div>
+            {% endfor %}
+        </div>
+        {% elif model_available %}
+        <div class="empty-state">
+            Isi form di sebelah kiri untuk melihat hasil prediksi segmentasi.
+        </div>
+        {% else %}
+        <div class="empty-state">
+            Model belum tersedia. Jalankan Pra-pemrosesan dan Training Model terlebih dahulu.
+        </div>
+        {% endif %}
+    </article>
+</section>
+
+<section class="analytics-card prediction-info-card">
+    <div class="section-title">
+        <div>
+            <p>Kegunaan</p>
+            <h2>Fungsi Menu Prediksi</h2>
+        </div>
+    </div>
+    <div class="prediction-explain-grid">
+        <div>
+            <i class="bi bi-input-cursor-text"></i>
+            <strong>Input Perilaku</strong>
+            <span>Admin memasukkan ringkasan transaksi calon pembeli atau pembeli yang ingin dianalisis.</span>
+        </div>
+        <div>
+            <i class="bi bi-diagram-3-fill"></i>
+            <strong>Proses Random Forest</strong>
+            <span>Sistem memakai model hasil training untuk menentukan label segmentasi paling sesuai.</span>
+        </div>
+        <div>
+            <i class="bi bi-graph-up-arrow"></i>
+            <strong>Dasar Keputusan</strong>
+            <span>Hasil prediksi membantu membaca tipe pelanggan, prioritas promosi, dan potensi penjualan tas.</span>
+        </div>
+    </div>
+</section>
+
+<section class="analytics-card prediction-history-card">
+    <div class="section-title">
+        <div>
+            <p>Riwayat</p>
+            <h2>Prediksi Terakhir</h2>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table preprocess-table align-middle">
+            <thead>
+                <tr>
+                    <th>Waktu</th>
+                    <th>Username</th>
+                    <th>Order</th>
+                    <th>Qty</th>
+                    <th>Total Belanja</th>
+                    <th>Pembayaran</th>
+                    <th>Provinsi</th>
+                    <th>SKU</th>
+                    <th>Segmentasi</th>
+                    <th>Confidence</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in history %}
+                <tr>
+                    <td>{{ row.predicted_at }}</td>
+                    <td>{{ row.buyer_username or "-" }}</td>
+                    <td>{{ row.total_orders }}</td>
+                    <td>{{ row.total_quantity }}</td>
+                    <td>Rp {{ "{:,.0f}".format(row.total_spent_rupiah).replace(",", ".") }}</td>
+                    <td>{{ row.dominant_payment_method }}</td>
+                    <td>{{ row.dominant_province }}</td>
+                    <td>{{ row.dominant_sku }}</td>
+                    <td><span class="status-pill status-selesai">{{ row.predicted_segment }}</span></td>
+                    <td>{{ "%.2f"|format((row.confidence or 0) * 100) }}%</td>
+                    <td>
+                        <form method="post" action="{{ url_for('main.prediction_delete', prediction_id=row.id) }}" data-confirm-title="Hapus riwayat prediksi?" data-confirm-message="Hasil prediksi ini akan dihapus dari riwayat.">
+                            <button class="icon-action danger" type="submit" aria-label="Hapus prediksi">
+                                <i class="bi bi-trash3-fill"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="11" class="text-center text-muted py-4">Belum ada riwayat prediksi.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

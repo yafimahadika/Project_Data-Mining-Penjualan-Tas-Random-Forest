@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="evaluation-hero">
+    <div>
+        <p>Evaluasi Model</p>
+        <h1>Evaluasi Performa Random Forest</h1>
+        <span>Menilai kualitas model segmentasi melalui akurasi, precision, recall, F1-score, confusion matrix, dan classification report.</span>
+    </div>
+    <div class="evaluation-badge">
+        <i class="bi bi-clipboard2-data-fill"></i>
+        <div>
+            <span>Data Uji</span>
+            <strong>{{ latest.test_rows if latest else 0 }}</strong>
+        </div>
+    </div>
+</section>
+
+{% if latest %}
+<section class="training-grid">
+    <article class="preprocess-stat">
+        <i class="bi bi-bullseye"></i>
+        <span>Akurasi</span>
+        <strong>{{ "%.2f"|format(latest.accuracy * 100) }}%</strong>
+    </article>
+    <article class="preprocess-stat">
+        <i class="bi bi-check2-circle"></i>
+        <span>Precision</span>
+        <strong>{{ "%.2f"|format(latest.precision_score * 100) }}%</strong>
+    </article>
+    <article class="preprocess-stat">
+        <i class="bi bi-search-heart"></i>
+        <span>Recall</span>
+        <strong>{{ "%.2f"|format(latest.recall_score * 100) }}%</strong>
+    </article>
+    <article class="preprocess-stat">
+        <i class="bi bi-activity"></i>
+        <span>F1-score</span>
+        <strong>{{ "%.2f"|format(latest.f1_score * 100) }}%</strong>
+    </article>
+</section>
+
+<section class="evaluation-grid">
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Tren Evaluasi</p>
+                <h2>Perbandingan Metrik Training</h2>
+            </div>
+            <span class="soft-pill"><i class="bi bi-clock-history"></i> {{ latest.trained_at }}</span>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="evaluationMetricChart"></canvas>
+        </div>
+    </article>
+
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Ringkasan</p>
+                <h2>Hasil Data Uji</h2>
+            </div>
+        </div>
+        <div class="summary-stack">
+            <div>
+                <i class="bi bi-check-circle-fill"></i>
+                <span>Prediksi benar</span>
+                <strong>{{ latest.correct_predictions }}</strong>
+            </div>
+            <div>
+                <i class="bi bi-x-circle-fill"></i>
+                <span>Prediksi salah</span>
+                <strong>{{ latest.incorrect_predictions }}</strong>
+            </div>
+            <div>
+                <i class="bi bi-table"></i>
+                <span>Total evaluasi</span>
+                <strong>{{ latest.evaluated_predictions }}</strong>
+            </div>
+        </div>
+    </article>
+</section>
+
+<section class="evaluation-grid evaluation-grid-wide">
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Confusion Matrix</p>
+                <h2>Aktual vs Prediksi</h2>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table matrix-table align-middle evaluation-matrix">
+                <thead>
+                    <tr>
+                        <th>Aktual \ Prediksi</th>
+                        {% for label in latest.labels %}
+                        <th>{{ label }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in latest.confusion_matrix %}
+                    {% set actual_index = loop.index0 %}
+                    <tr>
+                        <th>{{ latest.labels[actual_index] }}</th>
+                        {% for value in row %}
+                        <td class="{% if loop.index0 == actual_index %}matrix-correct{% endif %}">{{ value }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="analytics-card">
+        <div class="section-title">
+            <div>
+                <p>Report</p>
+                <h2>Classification Report</h2>
+            </div>
+        </div>
+        <pre class="classification-report">{{ latest.classification_report_text }}</pre>
+    </article>
+</section>
+
+<section class="analytics-card evaluation-info-card">
+    <div class="section-title">
+        <div>
+            <p>Interpretasi</p>
+            <h2>Kegunaan Metrik Evaluasi</h2>
+        </div>
+    </div>
+    <div class="prediction-explain-grid">
+        <div>
+            <i class="bi bi-bullseye"></i>
+            <strong>Akurasi</strong>
+            <span>Persentase prediksi segmentasi yang benar dari seluruh data uji.</span>
+        </div>
+        <div>
+            <i class="bi bi-check2-circle"></i>
+            <strong>Precision</strong>
+            <span>Ketepatan model saat menyatakan pembeli masuk ke suatu segmen.</span>
+        </div>
+        <div>
+            <i class="bi bi-search-heart"></i>
+            <strong>Recall</strong>
+            <span>Kemampuan model menemukan seluruh data yang seharusnya masuk ke segmen tertentu.</span>
+        </div>
+        <div>
+            <i class="bi bi-activity"></i>
+            <strong>F1-score</strong>
+            <span>Rata-rata harmonis precision dan recall untuk membaca kestabilan performa model.</span>
+        </div>
+        <div>
+            <i class="bi bi-grid-3x3-gap-fill"></i>
+            <strong>Confusion Matrix</strong>
+            <span>Menunjukkan perbandingan label aktual dan label hasil prediksi pada data uji.</span>
+        </div>
+        <div>
+            <i class="bi bi-file-earmark-text-fill"></i>
+            <strong>Classification Report</strong>
+            <span>Rincian performa tiap label segmentasi, termasuk support atau jumlah data uji per label.</span>
+        </div>
+    </div>
+</section>
+
+<section class="analytics-card training-history-card">
+    <div class="section-title">
+        <div>
+            <p>Riwayat</p>
+            <h2>Evaluasi Training</h2>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table preprocess-table align-middle">
+            <thead>
+                <tr>
+                    <th>Waktu</th>
+                    <th>Train</th>
+                    <th>Test</th>
+                    <th>Akurasi</th>
+                    <th>Precision</th>
+                    <th>Recall</th>
+                    <th>F1-score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in history|reverse %}
+                <tr>
+                    <td>{{ row.trained_at }}</td>
+                    <td>{{ row.train_rows }}</td>
+                    <td>{{ row.test_rows }}</td>
+                    <td>{{ "%.2f"|format(row.accuracy * 100) }}%</td>
+                    <td>{{ "%.2f"|format(row.precision_score * 100) }}%</td>
+                    <td>{{ "%.2f"|format(row.recall_score * 100) }}%</td>
+                    <td>{{ "%.2f"|format(row.f1_score * 100) }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% else %}
+<section class="analytics-card">
+    <div class="section-title">
+        <div>
+            <p>Status Evaluasi</p>
+            <h2>Belum Ada Model</h2>
+        </div>
+    </div>
+    <div class="empty-state">
+        Jalankan Pra-pemrosesan dan Training Model terlebih dahulu agar metrik evaluasi dapat ditampilkan.
+    </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if latest %}
+<script>
+    window.evaluationData = {{ chart_data | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/evaluation.js') }}"></script>
+{% endif %}
+{% endblock %}

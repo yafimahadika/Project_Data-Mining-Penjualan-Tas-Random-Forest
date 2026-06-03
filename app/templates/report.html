@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="report-cover">
+    <div class="report-cover-main">
+        <span class="report-kicker">Laporan Analisis</span>
+        <h1>Segmentasi Penjualan Tas</h1>
+        <p>PT Inovasi Kreatif Mediatama</p>
+        <div class="report-cover-meta">
+            <span><i class="bi bi-calendar3"></i> {{ generated_at.strftime("%d/%m/%Y %H:%M") }}</span>
+            <span><i class="bi bi-tree-fill"></i> Random Forest</span>
+            <span><i class="bi bi-bullseye"></i> {{ summary.accuracy }}</span>
+        </div>
+    </div>
+    <div class="report-cover-side">
+        <a class="report-download-button" href="{{ url_for('main.report_download') }}">
+            <i class="bi bi-file-earmark-excel-fill"></i>
+            <span>Download Excel</span>
+        </a>
+        <div>
+            <small>Total Penjualan</small>
+            <strong>{{ summary.revenue_display }}</strong>
+        </div>
+    </div>
+</section>
+
+<section class="report-metric-strip">
+    <article>
+        <i class="bi bi-database-fill"></i>
+        <span>Total Dataset</span>
+        <strong>{{ summary.raw_orders }}</strong>
+    </article>
+    <article>
+        <i class="bi bi-bag-check-fill"></i>
+        <span>Order Selesai</span>
+        <strong>{{ summary.finished_orders }}</strong>
+    </article>
+    <article>
+        <i class="bi bi-people-fill"></i>
+        <span>Pembeli</span>
+        <strong>{{ summary.customers }}</strong>
+    </article>
+    <article>
+        <i class="bi bi-table"></i>
+        <span>Data Training</span>
+        <strong>{{ summary.ready_rows }}</strong>
+    </article>
+    <article>
+        <i class="bi bi-magic"></i>
+        <span>Prediksi Manual</span>
+        <strong>{{ summary.prediction_total }}</strong>
+    </article>
+</section>
+
+<section class="report-dashboard">
+    <article class="report-panel report-panel-large">
+        <div class="report-panel-head">
+            <div>
+                <span>Segmentasi</span>
+                <h2>Distribusi Pembeli</h2>
+            </div>
+            <i class="bi bi-pie-chart-fill"></i>
+        </div>
+        <div class="report-segment-body">
+            <div class="report-chart-large">
+                <canvas id="reportSegmentChart"></canvas>
+            </div>
+            <div class="report-rank-list">
+                {% for row in segment_rows %}
+                <div>
+                    <span>{{ row.segment_label }}</span>
+                    <strong>{{ row.total }}</strong>
+                </div>
+                {% else %}
+                <div>
+                    <span>Belum ada hasil segmentasi</span>
+                    <strong>0</strong>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </article>
+
+    <article class="report-panel">
+        <div class="report-panel-head">
+            <div>
+                <span>Model</span>
+                <h2>Evaluasi Terakhir</h2>
+            </div>
+            <i class="bi bi-clipboard2-data-fill"></i>
+        </div>
+        <div class="report-score-list">
+            <div>
+                <span>Akurasi</span>
+                <strong>{{ summary.accuracy }}</strong>
+            </div>
+            {% if latest_model %}
+            <div>
+                <span>Precision</span>
+                <strong>{{ "%.2f"|format(latest_model.precision_score * 100) }}%</strong>
+            </div>
+            <div>
+                <span>Recall</span>
+                <strong>{{ "%.2f"|format(latest_model.recall_score * 100) }}%</strong>
+            </div>
+            <div>
+                <span>F1-score</span>
+                <strong>{{ "%.2f"|format(latest_model.f1_score * 100) }}%</strong>
+            </div>
+            {% else %}
+            <div>
+                <span>Status</span>
+                <strong>Belum Training</strong>
+            </div>
+            {% endif %}
+        </div>
+    </article>
+</section>
+
+<section class="report-dashboard report-dashboard-balanced">
+    <article class="report-panel">
+        <div class="report-panel-head">
+            <div>
+                <span>Produk</span>
+                <h2>SKU Teratas</h2>
+            </div>
+            <i class="bi bi-bag-fill"></i>
+        </div>
+        <div class="chart-wrap report-chart-medium">
+            <canvas id="reportProductChart"></canvas>
+        </div>
+    </article>
+
+    <article class="report-panel">
+        <div class="report-panel-head">
+            <div>
+                <span>Pembayaran</span>
+                <h2>Metode Dominan</h2>
+            </div>
+            <i class="bi bi-credit-card-2-front-fill"></i>
+        </div>
+        <div class="chart-wrap report-chart-medium">
+            <canvas id="reportPaymentChart"></canvas>
+        </div>
+    </article>
+</section>
+
+<section class="report-panel report-table-panel">
+    <div class="report-panel-head">
+        <div>
+            <span>Detail</span>
+            <h2>Hasil Segmentasi</h2>
+        </div>
+        <i class="bi bi-list-check"></i>
+    </div>
+    <div class="table-responsive">
+        <table class="table report-clean-table align-middle">
+            <thead>
+                <tr>
+                    <th>Segmentasi</th>
+                    <th>Total Pembeli</th>
+                    <th>Total Penjualan</th>
+                    <th>Rata-rata Order</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in segment_rows %}
+                <tr>
+                    <td><span class="report-segment-pill">{{ row.segment_label }}</span></td>
+                    <td>{{ row.total }}</td>
+                    <td>Rp {{ "{:,.0f}".format(row.revenue or 0).replace(",", ".") }}</td>
+                    <td>Rp {{ "{:,.0f}".format(row.average_order or 0).replace(",", ".") }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-4">Belum ada hasil segmentasi. Jalankan Pra-pemrosesan terlebih dahulu.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="report-dashboard report-dashboard-balanced">
+    <article class="report-panel">
+        <div class="report-panel-head">
+            <div>
+                <span>Prediksi</span>
+                <h2>Rekap Manual</h2>
+            </div>
+            <i class="bi bi-stars"></i>
+        </div>
+        <div class="report-rank-list">
+            {% for row in prediction_rows %}
+            <div>
+                <span>{{ row.predicted_segment }}</span>
+                <strong>{{ row.total }} data | {{ "%.2f"|format((row.average_confidence or 0) * 100) }}%</strong>
+            </div>
+            {% else %}
+            <div>
+                <span>Belum ada prediksi manual</span>
+                <strong>0</strong>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+
+    <article class="report-panel">
+        <div class="report-panel-head">
+            <div>
+                <span>Wilayah</span>
+                <h2>Provinsi Pembeli</h2>
+            </div>
+            <i class="bi bi-geo-alt-fill"></i>
+        </div>
+        <div class="report-rank-list">
+            {% for row in province_rows %}
+            <div>
+                <span>{{ row.province or "Tidak Diketahui" }}</span>
+                <strong>{{ row.total_customers }}</strong>
+            </div>
+            {% else %}
+            <div>
+                <span>Belum ada data wilayah</span>
+                <strong>0</strong>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.reportData = {{ chart_data | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/report.js') }}"></script>
+{% endblock %}
