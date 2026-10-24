@@ -112,3 +112,35 @@ if (datasetBulkDeleteForm) {
 }
 
 updateDatasetSelection();
+
+const datasetUploadForm = document.getElementById("datasetUploadForm");
+const datasetFile = document.getElementById("datasetFile");
+const datasetUploadLabel = document.getElementById("datasetUploadLabel");
+const datasetUploadStatus = document.getElementById("datasetUploadStatus");
+
+datasetFile?.addEventListener("change", () => {
+    const file = datasetFile.files[0];
+    if (datasetUploadStatus) {
+        datasetUploadStatus.textContent = file
+            ? `${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB) siap diupload.`
+            : "Pilih file .xlsx hasil ekspor pesanan Shopee, lalu klik tombol upload.";
+    }
+});
+
+datasetUploadForm?.addEventListener("submit", (event) => {
+    if (datasetUploadForm.dataset.uploading === "true") {
+        event.preventDefault();
+        return;
+    }
+    datasetUploadForm.dataset.uploading = "true";
+    datasetUploadForm.setAttribute("aria-busy", "true");
+    const button = datasetUploadForm.querySelector("button[type='submit']");
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
+    }
+    if (datasetUploadLabel) datasetUploadLabel.textContent = "Memproses...";
+    if (datasetUploadStatus) {
+        datasetUploadStatus.textContent = "Dataset sedang diupload dan diproses. Tunggu sampai hasilnya tampil.";
+    }
+});

@@ -1,6 +1,8 @@
 from functools import wraps
 from math import ceil
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from time import perf_counter
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash
@@ -345,14 +347,17 @@ def dataset_upload():
         return redirect(url_for("main.dataset"))
 
     upload_dir = Path(current_app.root_path).parent / current_app.config["UPLOAD_FOLDER"]
-    upload_dir.mkdir(exist_ok=True)
-    path = upload_dir / filename
-    upload.save(path)
-
     try:
-        imported_rows = import_excel_file(path, upload.filename)
-        flash(f"Dataset {filename} berhasil diupload. {imported_rows} baris diproses.", "success")
+        started_at = perf_counter()
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix="dataset-", dir=upload_dir) as temporary_dir:
+            path = Path(temporary_dir) / filename
+            upload.save(path)
+            imported_rows = import_excel_file(path, upload.filename)
+        elapsed = perf_counter() - started_at
+        flash(f"Dataset {filename} berhasil diupload. {imported_rows} baris diproses dalam {elapsed:.1f} detik.", "success")
     except Exception as error:
+        current_app.logger.exception("Gagal mengimpor dataset")
         flash(f"Gagal upload dataset: {error}", "danger")
 
     return redirect(url_for("main.dataset"))
@@ -509,9 +514,12 @@ def preprocessing():
 @login_required
 def preprocessing_process():
     try:
+        started_at = perf_counter()
         result = run_preprocessing()
-        flash(f"Pra-pemrosesan selesai. {result['processed_rows']} data pembeli siap training.", "success")
+        elapsed = perf_counter() - started_at
+        flash(f"Pra-pemrosesan selesai. {result['processed_rows']} data pembeli siap training dalam {elapsed:.1f} detik.", "success")
     except Exception as error:
+        current_app.logger.exception("Pra-pemrosesan gagal")
         flash(f"Pra-pemrosesan gagal: {error}", "danger")
     return redirect(url_for("main.preprocessing"))
 

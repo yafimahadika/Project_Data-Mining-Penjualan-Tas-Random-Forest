@@ -18,17 +18,18 @@
     <div>
         <h1>Manajemen Dataset</h1>
     </div>
-    <form class="upload-card" method="post" action="{{ url_for('main.dataset_upload') }}" enctype="multipart/form-data">
+    <form id="datasetUploadForm" class="upload-card" method="post" action="{{ url_for('main.dataset_upload') }}" enctype="multipart/form-data">
         <label for="datasetFile">
             <i class="bi bi-cloud-arrow-up-fill"></i>
-            <span>Upload Dataset</span>
+            <span id="datasetUploadLabel">Upload Dataset</span>
         </label>
         <input id="datasetFile" type="file" name="dataset_file" accept=".xlsx" required>
-        <button type="submit" class="btn btn-primary">
+        <button type="submit" class="btn btn-primary" aria-label="Upload dataset">
             <i class="bi bi-upload"></i>
         </button>
     </form>
 </section>
+<p id="datasetUploadStatus" class="small text-muted" role="status" aria-live="polite">Pilih file .xlsx hasil ekspor pesanan Shopee, lalu klik tombol upload.</p>
 
 <section class="analytics-card dataset-card">
     <form class="dataset-toolbar" method="get" action="{{ url_for('main.dataset') }}">

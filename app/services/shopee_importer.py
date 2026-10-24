@@ -1,5 +1,6 @@
-from math import ceil
+from math import ceil, isfinite
 from pathlib import Path
+import re
 
 import pandas as pd
 
@@ -10,11 +11,11 @@ BATCH_SIZE = 500
 
 
 def clean_value(value):
-    if pd.isna(value):
-        return None
     if isinstance(value, str):
         value = value.strip()
         return None if value in {"", "-"} else value
+    if value is None or pd.isna(value):
+        return None
     return value
 
 
@@ -32,14 +33,27 @@ def number(value, default=0):
     value = clean_value(value)
     if value is None:
         return default
-    return float(value)
+    if isinstance(value, str):
+        value = re.sub(r"(?i)^rp\.?\s*", "", value).replace(" ", "").replace("\u00a0", "")
+        # Shopee exports text money with Indonesian thousands/decimal separators.
+        if "," in value:
+            value = value.replace(".", "").replace(",", ".")
+        elif re.fullmatch(r"[+-]?\d{1,3}(?:\.\d{3})+", value):
+            value = value.replace(".", "")
+    result = float(value)
+    if not isfinite(result):
+        raise ValueError("Angka harus bernilai terbatas.")
+    return result
 
 
 def integer(value, default=0):
     value = clean_value(value)
     if value is None:
         return default
-    return int(value)
+    result = number(value)
+    if not result.is_integer():
+        raise ValueError("Jumlah produk harus berupa bilangan bulat.")
+    return int(result)
 
 
 def segment_label(row, spent_q75, frequency_threshold):
@@ -52,19 +66,103 @@ def segment_label(row, spent_q75, frequency_threshold):
     return "Pelanggan Reguler"
 
 
+def prepare_excel_rows(path, source_name=None):
+    path = Path(path)
+    source_file = source_name or path.name
+    try:
+        from python_calamine import CalamineWorkbook
+    except ImportError:
+        with pd.ExcelFile(path, engine="openpyxl") as workbook:
+            sheet = orders_sheet_name(workbook.sheet_names)
+            orders = pd.read_excel(workbook, sheet_name=sheet, dtype=object)
+    else:
+        # Read directly to avoid pandas converting every cell of the 50-column export.
+        with CalamineWorkbook.from_path(path) as workbook:
+            sheet = orders_sheet_name(workbook.sheet_names)
+            data = workbook.get_sheet_by_name(sheet).to_python(skip_empty_area=False)
+        if not data:
+            raise ValueError("Sheet orders tidak berisi data pesanan.")
+        orders = pd.DataFrame(data[1:], columns=data[0], dtype=object).replace("", None)
+    orders.columns = orders.columns.astype(str).str.strip()
+    if "Total Harga Produk" not in orders and "Subtotal Pesanan" in orders:
+        orders = orders.rename(columns={"Subtotal Pesanan": "Total Harga Produk"})
+    required = {"No. Pesanan", "Status Pesanan", "Waktu Pesanan Dibuat", "Harga Setelah Diskon",
+                "Jumlah", "Total Harga Produk", "Total Pembayaran", "Username (Pembeli)"}
+    missing = sorted(required - set(orders.columns))
+    if missing:
+        raise ValueError("Kolom wajib belum tersedia: " + ", ".join(missing))
+    orders = orders.dropna(how="all")
+    if orders.empty:
+        raise ValueError("Sheet orders tidak berisi data pesanan.")
+    # Parse entire columns once instead of calling pandas once per cell.
+    for column in ("Waktu Pesanan Dibuat", "Waktu Pembayaran Dilakukan", "Waktu Pesanan Selesai"):
+        if column in orders:
+            orders[column] = pd.to_datetime(orders[column], format="mixed", errors="coerce")
+    rows = []
+    for excel_index, values in zip(orders.index, orders.itertuples(index=False, name=None)):
+        row = dict(zip(orders.columns, values))
+        try:
+            if not clean_value(row.get("No. Pesanan")) or not clean_value(row.get("Status Pesanan")):
+                raise ValueError("No. Pesanan dan Status Pesanan wajib diisi.")
+            if pd.isna(row.get("Waktu Pesanan Dibuat")):
+                raise ValueError("Waktu Pesanan Dibuat kosong atau tidak valid.")
+            price_rupiah = number(row.get("Harga Setelah Diskon"))
+            total_product_rupiah = number(row.get("Total Harga Produk"))
+            total_payment_rupiah = number(row.get("Total Pembayaran"))
+            rows.append(
+                (
+                    source_file,
+                    clean_value(row.get("No. Pesanan")),
+                    clean_value(row.get("Status Pesanan")),
+                    clean_value(row.get("Alasan Pembatalan")),
+                    clean_value(row.get("No. Resi")),
+                    clean_value(row.get("Opsi Pengiriman")),
+                    clean_value(row.get("Antar ke counter/ pick-up")),
+                    row["Waktu Pesanan Dibuat"].to_pydatetime(),
+                    datetime_or_none(row.get("Waktu Pembayaran Dilakukan")),
+                    datetime_or_none(row.get("Waktu Pesanan Selesai")),
+                    clean_value(row.get("Metode Pembayaran")),
+                    clean_value(row.get("Nama Produk")),
+                    clean_value(row.get("Nomor Referensi SKU")),
+                    clean_value(row.get("Nama Variasi")),
+                    price_rupiah / MONEY_MULTIPLIER,
+                    price_rupiah,
+                    integer(row.get("Jumlah")),
+                    integer(row.get("Returned quantity")),
+                    total_product_rupiah / MONEY_MULTIPLIER,
+                    total_product_rupiah,
+                    total_payment_rupiah / MONEY_MULTIPLIER,
+                    total_payment_rupiah,
+                    clean_value(row.get("Username (Pembeli)")),
+                    clean_value(row.get("Nama Penerima")),
+                    clean_value(row.get("Kota/Kabupaten")),
+                    clean_value(row.get("Provinsi")),
+                    clean_value(row.get("Catatan dari Pembeli")),
+                )
+            )
+        except (ValueError, TypeError, OverflowError) as error:
+            raise ValueError(f"Baris Excel {excel_index + 2}: {error}") from error
+    return rows
+
+
+def orders_sheet_name(sheet_names):
+    sheets = {name.strip().lower(): name for name in sheet_names}
+    if "orders" not in sheets:
+        raise ValueError("File harus memiliki sheet 'orders' dari ekspor pesanan Shopee.")
+    return sheets["orders"]
+
+
+def datetime_or_none(value):
+    return None if value is None or pd.isna(value) else value.to_pydatetime()
+
+
 def import_excel_file(path, source_name=None):
     path = Path(path)
     source_file = source_name or path.name
-    orders = pd.read_excel(path, sheet_name="orders")
-    orders["source_file"] = source_file
-
+    # Validate everything before replacing an existing import.
+    rows = prepare_excel_rows(path, source_file)
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute(
-        "DELETE FROM shopee_orders WHERE source_file IN (%s, %s)",
-        (source_file, path.name),
-    )
-
     insert_sql = """
         INSERT INTO shopee_orders (
             source_file, order_number, order_status, cancel_reason, tracking_number,
@@ -80,56 +178,27 @@ def import_excel_file(path, source_name=None):
         )
     """
 
-    rows = []
-    for _, row in orders.iterrows():
-        price_raw = number(row.get("Harga Setelah Diskon"))
-        total_product_raw = number(row.get("Total Harga Produk"))
-        total_payment_raw = number(row.get("Total Pembayaran"))
-        rows.append(
-            (
-                row["source_file"],
-                clean_value(row.get("No. Pesanan")),
-                clean_value(row.get("Status Pesanan")),
-                clean_value(row.get("Alasan Pembatalan")),
-                clean_value(row.get("No. Resi")),
-                clean_value(row.get("Opsi Pengiriman")),
-                clean_value(row.get("Antar ke counter/ pick-up")),
-                parse_datetime(row.get("Waktu Pesanan Dibuat")),
-                parse_datetime(row.get("Waktu Pembayaran Dilakukan")),
-                parse_datetime(row.get("Waktu Pesanan Selesai")),
-                clean_value(row.get("Metode Pembayaran")),
-                clean_value(row.get("Nama Produk")),
-                clean_value(row.get("Nomor Referensi SKU")),
-                clean_value(row.get("Nama Variasi")),
-                price_raw,
-                price_raw * MONEY_MULTIPLIER,
-                integer(row.get("Jumlah")),
-                integer(row.get("Returned quantity")),
-                total_product_raw,
-                total_product_raw * MONEY_MULTIPLIER,
-                total_payment_raw,
-                total_payment_raw * MONEY_MULTIPLIER,
-                clean_value(row.get("Username (Pembeli)")),
-                clean_value(row.get("Nama Penerima")),
-                clean_value(row.get("Kota/Kabupaten")),
-                clean_value(row.get("Provinsi")),
-                clean_value(row.get("Catatan dari Pembeli")),
-            )
+    try:
+        cursor.execute(
+            "DELETE FROM shopee_orders WHERE source_file IN (%s, %s)",
+            (source_file, path.name),
         )
-
-    for start in range(0, len(rows), BATCH_SIZE):
-        cursor.executemany(insert_sql, rows[start:start + BATCH_SIZE])
-
-    conn.commit()
-    cursor.close()
-    rebuild_customer_segments()
+        for start in range(0, len(rows), BATCH_SIZE):
+            cursor.executemany(insert_sql, rows[start:start + BATCH_SIZE])
+        rebuild_customer_segments(commit=False)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
     return len(rows)
 
 
-def rebuild_customer_segments():
+def rebuild_customer_segments(commit=True):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("TRUNCATE TABLE shopee_customer_segments")
+    cursor.execute("DELETE FROM shopee_customer_segments")
     cursor.execute(
         """
         SELECT buyer_username, order_number,
@@ -143,7 +212,8 @@ def rebuild_customer_segments():
     )
     order_rows = cursor.fetchall()
     if not order_rows:
-        conn.commit()
+        if commit:
+            conn.commit()
         cursor.close()
         return
 
@@ -169,10 +239,12 @@ def rebuild_customer_segments():
     spent_q75 = customer_level["total_spent_rupiah"].quantile(0.75)
     order_q75 = customer_level["total_orders"].quantile(0.75)
     frequency_threshold = max(2, ceil(order_q75))
-    customer_level["segment_label"] = customer_level.apply(
-        lambda item: segment_label(item, spent_q75, frequency_threshold),
-        axis=1,
-    )
+    high_spend = customer_level["total_spent_rupiah"] >= spent_q75
+    frequent = customer_level["total_orders"] >= frequency_threshold
+    customer_level["segment_label"] = "Pelanggan Reguler"
+    customer_level.loc[high_spend, "segment_label"] = "Pelanggan Potensial"
+    customer_level.loc[frequent, "segment_label"] = "Pelanggan Aktif"
+    customer_level.loc[high_spend & frequent, "segment_label"] = "Pelanggan Premium"
 
     segment_sql = """
         INSERT INTO shopee_customer_segments (
@@ -182,20 +254,21 @@ def rebuild_customer_segments():
     """
     segment_rows = [
         (
-            row["buyer_username"],
-            int(row["total_orders"]),
-            int(row["total_quantity"]),
-            float(row["total_spent_rupiah"]),
-            float(row["average_order_rupiah"]),
-            row["first_order_at"],
-            row["last_order_at"],
-            row["segment_label"],
+            row.buyer_username,
+            int(row.total_orders),
+            int(row.total_quantity),
+            float(row.total_spent_rupiah),
+            float(row.average_order_rupiah),
+            datetime_or_none(row.first_order_at),
+            datetime_or_none(row.last_order_at),
+            row.segment_label,
         )
-        for _, row in customer_level.iterrows()
+        for row in customer_level.itertuples(index=False)
     ]
     plain_cursor = conn.cursor()
     for start in range(0, len(segment_rows), BATCH_SIZE):
         plain_cursor.executemany(segment_sql, segment_rows[start:start + BATCH_SIZE])
-    conn.commit()
+    if commit:
+        conn.commit()
     plain_cursor.close()
     cursor.close()

@@ -4,6 +4,8 @@ import pandas as pd
 
 from app.db import get_db, query
 
+BATCH_SIZE = 500
+
 
 def ensure_preprocessed_table():
     conn = get_db()
@@ -103,6 +105,45 @@ def most_common(series):
     return None if mode.empty else mode.iloc[0]
 
 
+def add_group_modes(result, frame, keys, columns):
+    """Match Series.mode().iloc[0], including smallest-value tie breaking."""
+    for column, output in columns.items():
+        counts = (
+            frame.groupby(keys + [column]).size().rename("frequency").reset_index()
+        )
+        modes = (
+            counts.sort_values(["frequency", column], ascending=[False, True])
+            .drop_duplicates(keys)[keys + [column]]
+            .rename(columns={column: output})
+        )
+        result = result.merge(modes, on=keys, how="left", validate="one_to_one")
+    return result
+
+
+def replace_preprocessed_rows(values):
+    conn = get_db()
+    cursor = conn.cursor()
+    insert_sql = """
+        INSERT INTO preprocessed_sales (
+            buyer_username, total_orders, total_quantity, total_spent_rupiah,
+            average_order_rupiah, cod_orders, online_orders, dominant_payment_method,
+            dominant_city, dominant_province, dominant_sku, days_since_first_order,
+            segment_label
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    try:
+        # DELETE participates in the transaction; TRUNCATE would commit immediately.
+        cursor.execute("DELETE FROM preprocessed_sales")
+        for start in range(0, len(values), BATCH_SIZE):
+            cursor.executemany(insert_sql, values[start:start + BATCH_SIZE])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 def run_preprocessing():
     ensure_preprocessed_table()
     rows = query(
@@ -115,13 +156,8 @@ def run_preprocessing():
           AND order_number IS NOT NULL
         """
     )
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("TRUNCATE TABLE preprocessed_sales")
-
     if not rows:
-        conn.commit()
-        cursor.close()
+        replace_preprocessed_rows([])
         return {"processed_rows": 0}
 
     frame = pd.DataFrame(rows)
@@ -137,13 +173,13 @@ def run_preprocessing():
             total_payment_rupiah=("total_payment_rupiah", "max"),
             quantity=("quantity", "sum"),
             order_created_at=("order_created_at", "min"),
-            payment_method=("payment_method", most_common),
-            city=("city", most_common),
-            province=("province", most_common),
-            sku_reference=("sku_reference", most_common),
             is_cod=("is_cod", "max"),
             is_online=("is_online", "max"),
         )
+    )
+    order_level = add_group_modes(
+        order_level, frame, ["buyer_username", "order_number"],
+        {column: column for column in ("payment_method", "city", "province", "sku_reference")},
     )
 
     customer_level = (
@@ -157,11 +193,12 @@ def run_preprocessing():
             online_orders=("is_online", "sum"),
             first_order=("order_created_at", "min"),
             last_order=("order_created_at", "max"),
-            dominant_payment_method=("payment_method", most_common),
-            dominant_city=("city", most_common),
-            dominant_province=("province", most_common),
-            dominant_sku=("sku_reference", most_common),
         )
+    )
+    customer_level = add_group_modes(
+        customer_level, order_level, ["buyer_username"],
+        {"payment_method": "dominant_payment_method", "city": "dominant_city",
+         "province": "dominant_province", "sku_reference": "dominant_sku"},
     )
 
     customer_level["days_since_first_order"] = (
@@ -170,44 +207,29 @@ def run_preprocessing():
     spent_q75 = customer_level["total_spent_rupiah"].quantile(0.75)
     frequency_threshold = max(2, ceil(customer_level["total_orders"].quantile(0.75)))
 
-    def label(row):
-        if row["total_spent_rupiah"] >= spent_q75 and row["total_orders"] >= frequency_threshold:
-            return "Pelanggan Premium"
-        if row["total_orders"] >= frequency_threshold:
-            return "Pelanggan Aktif"
-        if row["total_spent_rupiah"] >= spent_q75:
-            return "Pelanggan Potensial"
-        return "Pelanggan Reguler"
-
-    customer_level["segment_label"] = customer_level.apply(label, axis=1)
-
-    insert_sql = """
-        INSERT INTO preprocessed_sales (
-            buyer_username, total_orders, total_quantity, total_spent_rupiah,
-            average_order_rupiah, cod_orders, online_orders, dominant_payment_method,
-            dominant_city, dominant_province, dominant_sku, days_since_first_order,
-            segment_label
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """
+    high_spend = customer_level["total_spent_rupiah"] >= spent_q75
+    frequent = customer_level["total_orders"] >= frequency_threshold
+    customer_level["segment_label"] = "Pelanggan Reguler"
+    customer_level.loc[high_spend, "segment_label"] = "Pelanggan Potensial"
+    customer_level.loc[frequent, "segment_label"] = "Pelanggan Aktif"
+    customer_level.loc[high_spend & frequent, "segment_label"] = "Pelanggan Premium"
     values = [
         (
-            row["buyer_username"],
-            int(row["total_orders"]),
-            int(row["total_quantity"]),
-            float(row["total_spent_rupiah"]),
-            float(row["average_order_rupiah"]),
-            int(row["cod_orders"]),
-            int(row["online_orders"]),
-            row["dominant_payment_method"],
-            row["dominant_city"],
-            row["dominant_province"],
-            row["dominant_sku"],
-            int(row["days_since_first_order"]),
-            row["segment_label"],
+            row.buyer_username,
+            int(row.total_orders),
+            int(row.total_quantity),
+            float(row.total_spent_rupiah),
+            float(row.average_order_rupiah),
+            int(row.cod_orders),
+            int(row.online_orders),
+            None if pd.isna(row.dominant_payment_method) else row.dominant_payment_method,
+            None if pd.isna(row.dominant_city) else row.dominant_city,
+            None if pd.isna(row.dominant_province) else row.dominant_province,
+            None if pd.isna(row.dominant_sku) else row.dominant_sku,
+            int(row.days_since_first_order),
+            row.segment_label,
         )
-        for _, row in customer_level.iterrows()
+        for row in customer_level.itertuples(index=False)
     ]
-    cursor.executemany(insert_sql, values)
-    conn.commit()
-    cursor.close()
+    replace_preprocessed_rows(values)
     return {"processed_rows": len(values)}
